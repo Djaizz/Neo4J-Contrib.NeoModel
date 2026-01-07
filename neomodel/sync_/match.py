@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import inspect
 import re
 import string
@@ -1570,6 +1572,14 @@ class NodeSet(BaseSet):
 
     def __await__(self) -> Any:
         return self.all().__await__()  # type: ignore[attr-defined]
+
+    def count(self) -> int:
+        """Alias of __len__ to provide Django QuerySet-like .count() method."""
+        return len(self)
+
+    def _clone(self) -> NodeSet:
+        """Clone the NodeSet to provide Django QuerySet-like `._clone()`."""
+        return NodeSet(source=self.source)
 
     def _get(
         self, limit: int | None = None, lazy: bool = False, **kwargs: dict[str, Any]
