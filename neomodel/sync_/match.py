@@ -1573,6 +1573,15 @@ class NodeSet(BaseSet):
     def __await__(self) -> Any:
         return self.all().__await__()  # type: ignore[attr-defined]
 
+    @property
+    def model(self):
+        """Return the source class/model for Django Admin compatibility.
+
+        Django Admin expects querysets to have a `.model` attribute pointing to the model class.
+        This property provides that interface by returning `self.source` (the model class).
+        """
+        return self.source
+
     def count(self) -> int:
         """Alias of __len__ to provide Django QuerySet-like .count() method."""
         return len(self)
