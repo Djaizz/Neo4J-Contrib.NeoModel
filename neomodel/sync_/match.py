@@ -1590,6 +1590,9 @@ class NodeSet(BaseSet):
         """Clone the NodeSet to provide Django QuerySet-like `._clone()`."""
         return NodeSet(source=self.source)
 
+    def none(self) -> NodeSet:
+        """Return an empty NodeSet to provide Django QuerySet-like .none() method."""
+
     def _get(
         self, limit: int | None = None, lazy: bool = False, **kwargs: dict[str, Any]
     ) -> list:
