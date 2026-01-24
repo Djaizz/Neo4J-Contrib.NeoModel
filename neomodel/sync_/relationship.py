@@ -156,7 +156,7 @@ class StructuredRel(StructuredRelBase):
         )
         if results is None or results[0] is None or results[0][0] is None:
             raise ValueError(
-                f"Start node with elementId {self._start_node_element_id} not found"
+                f"End node with elementId {self._end_node_element_id} not found"
             )
         return results[0][0][0]
 
