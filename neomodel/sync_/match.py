@@ -1074,16 +1074,16 @@ class QueryBuilder:
         returned_items: list[str] = []
         if hasattr(self.node_set, "_subqueries"):
             for subquery in self.node_set._subqueries:
-                query += " CALL {"
                 if subquery["initial_context"]:
-                    query += " WITH "
                     context: list[str] = []
                     for var in subquery["initial_context"]:
                         if isinstance(var, (NodeNameResolver, RelationNameResolver)):
                             context.append(var.resolve(self))
                         else:
                             context.append(var)
-                    query += ",".join(context)
+                    query += f" CALL ({', '.join(context)}) {{"
+                else:
+                    query += " CALL {"
 
                 query += f"{subquery['query']} }} "
                 self._query_params.update(subquery["query_params"])
