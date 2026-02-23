@@ -921,7 +921,7 @@ class AsyncDatabase:
         await self.cypher_query(
             """
             MATCH (a)
-            CALL { WITH a DETACH DELETE a }
+            CALL (a) { DETACH DELETE a }
             IN TRANSACTIONS OF 5000 rows
         """
         )
