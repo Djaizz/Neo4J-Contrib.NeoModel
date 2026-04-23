@@ -14,6 +14,7 @@ from neo4j import (
     DEFAULT_DATABASE,
     Driver,
     GraphDatabase,
+    Query,
     Result,
     Session,
     Transaction,
@@ -438,7 +439,12 @@ class Database:
         return ImpersonationHandler(self, impersonated_user=user)
 
     @ensure_connection
-    def begin(self, access_mode: str = ACCESS_MODE_WRITE, **parameters: Any) -> None:
+    def begin(
+        self,
+        access_mode: str = ACCESS_MODE_WRITE,
+        timeout: float | None = None,
+        **parameters: Any,
+    ) -> None:
         """
         Begins a new transaction. Raises SystemError if a transaction is already active.
         """
@@ -458,7 +464,8 @@ class Database:
         )
 
         assert self._session is not None, "Session has not been created"
-        self._active_transaction = self._session.begin_transaction()
+        timeout = get_config().transaction_timeout if timeout is None else timeout
+        self._active_transaction = self._session.begin_transaction(timeout=timeout)
 
     @ensure_connection
     def commit(self) -> Bookmarks:
@@ -672,6 +679,9 @@ class Database:
         else:
             # Otherwise create a new session in a with to dispose of it after it has been run
             if self.driver:
+                config = get_config()
+                if config.transaction_timeout is not None:
+                    query = Query(query, timeout=config.transaction_timeout)
                 with self.driver.session(
                     database=self._database_name,
                     impersonated_user=self.impersonated_user,
@@ -692,7 +702,7 @@ class Database:
     def _run_cypher_query(
         self,
         session: Session | Transaction,
-        query: str,
+        query: str | Query,
         params: dict[str, Any],
         handle_unique: bool,
         retry_on_session_expire: bool,
@@ -912,13 +922,11 @@ class Database:
     def clear_neo4j_database(
         self, clear_constraints: bool = False, clear_indexes: bool = False
     ) -> None:
-        self.cypher_query(
-            """
+        self.cypher_query("""
             MATCH (a)
             CALL { WITH a DETACH DELETE a }
             IN TRANSACTIONS OF 5000 rows
-        """
-        )
+        """)
         if clear_constraints:
             self.drop_constraints()
         if clear_indexes:
@@ -1162,10 +1170,8 @@ class Database:
                 f" + Creating node unique constraint for {property_name} on label {target_cls.__label__} for class {target_cls.__module__}.{target_cls.__name__}\n"
             )
         try:
-            self.cypher_query(
-                f"""CREATE CONSTRAINT {constraint_name}
-                            FOR (n:{label}) REQUIRE n.{property_name} IS UNIQUE"""
-            )
+            self.cypher_query(f"""CREATE CONSTRAINT {constraint_name}
+                            FOR (n:{label}) REQUIRE n.{property_name} IS UNIQUE""")
         except ClientError as e:
             if e.code in (
                 RULE_ALREADY_EXISTS,

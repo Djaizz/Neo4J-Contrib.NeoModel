@@ -22,10 +22,12 @@ class AsyncTransactionProxy:
         db: AsyncDatabase,
         access_mode: str | None = None,
         parallel_runtime: bool | None = False,
+        timeout: float | None = None,
     ):
         self.db: AsyncDatabase = db
         self.access_mode: str | None = access_mode
         self.parallel_runtime: bool | None = parallel_runtime
+        self.timeout: float | None = timeout
         self.bookmarks: Bookmarks | None = None
         self.last_bookmarks: Bookmarks | None = None
 
@@ -38,7 +40,11 @@ class AsyncTransactionProxy:
             )
             self.parallel_runtime = False
         self.db._parallel_runtime = self.parallel_runtime
-        await self.db.begin(access_mode=self.access_mode, bookmarks=self.bookmarks)
+        await self.db.begin(
+            access_mode=self.access_mode,
+            bookmarks=self.bookmarks,
+            timeout=self.timeout,
+        )
         self.bookmarks = None
         return self
 

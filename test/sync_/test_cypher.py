@@ -2,12 +2,14 @@ import builtins
 from test._async_compat import mark_sync_test
 
 import pytest
+from neo4j.exceptions import ClientError
 from neo4j.exceptions import ClientError as CypherError
 from numpy import ndarray
 from pandas import DataFrame, Series
 
 from neomodel import StringProperty, StructuredNode, db
 from neomodel._async_compat.util import Util
+from neomodel.config import get_config
 
 
 class User2(StructuredNode):
@@ -50,13 +52,11 @@ def test_cypher():
     assert data[0][0] == "jim1@test.com"
     assert "a.email" in meta
 
-    data, meta = jim.cypher(
-        f"""
+    data, meta = jim.cypher(f"""
             MATCH (a) WHERE {db.get_id_method()}(a)=$self
             MATCH (a)<-[:USER2]-(b)
             RETURN a, b, 3
-        """
-    )
+        """)
     assert "a" in meta and "b" in meta
 
 
@@ -163,3 +163,30 @@ def test_numpy_integration():
     assert isinstance(array, ndarray)
     assert array.shape == (2, 2)
     assert array[0][0] == "jimlu"
+
+
+@mark_sync_test
+def test_cypher_query_transaction_timeout_via_config_fires():
+    config = get_config()
+    original = config.transaction_timeout
+    try:
+        config.transaction_timeout = 1
+        with pytest.raises(
+            ClientError,
+            match="{neo4j_code: Neo.ClientError.Transaction.TransactionTimedOut",
+        ):
+            db.cypher_query("CALL apoc.util.sleep(3000)")
+    finally:
+        config.transaction_timeout = original
+
+
+@mark_sync_test
+def test_cypher_query_transaction_timeout_via_config_succeeds():
+    config = get_config()
+    original = config.transaction_timeout
+    try:
+        config.transaction_timeout = 2
+        results, meta = db.cypher_query("CALL apoc.util.sleep(500)")
+        assert results is not None
+    finally:
+        config.transaction_timeout = original
