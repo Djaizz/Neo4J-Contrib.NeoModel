@@ -171,10 +171,7 @@ def test_cypher_query_transaction_timeout_via_config_fires():
     original = config.transaction_timeout
     try:
         config.transaction_timeout = 1
-        with pytest.raises(
-            ClientError,
-            match="{neo4j_code: Neo.ClientError.Transaction.TransactionTimedOut",
-        ):
+        with pytest.raises(ClientError, match="TransactionTimedOut"):
             db.cypher_query("CALL apoc.util.sleep(3000)")
     finally:
         config.transaction_timeout = original
@@ -188,5 +185,40 @@ def test_cypher_query_transaction_timeout_via_config_succeeds():
         config.transaction_timeout = 2
         results, meta = db.cypher_query("CALL apoc.util.sleep(500)")
         assert results is not None
+    finally:
+        config.transaction_timeout = original
+
+
+@mark_sync_test
+def test_cypher_query_transaction_timeout_with_debug_logging(monkeypatch):
+    # Regression test: the configured timeout must not break the
+    # NEOMODEL_CYPHER_DEBUG logging of the executed query
+    monkeypatch.setenv("NEOMODEL_CYPHER_DEBUG", "1")
+    config = get_config()
+    original = config.transaction_timeout
+    try:
+        config.transaction_timeout = 5
+        results, meta = db.cypher_query("RETURN 1")
+        assert results[0][0] == 1
+    finally:
+        config.transaction_timeout = original
+
+
+@mark_sync_test
+def test_stream_cypher_query_transaction_timeout_via_config_fires():
+    config = get_config()
+    original = config.transaction_timeout
+    try:
+        config.transaction_timeout = 1
+        with pytest.raises(ClientError, match="TransactionTimedOut"):
+            with db.driver.session(database=db._database_name) as session:
+                for _ in db._stream_cypher_query(
+                    session,
+                    "CALL apoc.util.sleep(3000) RETURN 1",
+                    {},
+                    handle_unique=True,
+                    resolve_objects=False,
+                ):
+                    pass
     finally:
         config.transaction_timeout = original

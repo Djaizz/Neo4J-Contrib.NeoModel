@@ -6,7 +6,6 @@ from neo4j.exceptions import ClientError, TransactionError
 from pytest import raises
 
 from neomodel import AsyncStructuredNode, StringProperty, UniqueProperty, adb
-from neomodel.async_.transaction import AsyncTransactionProxy
 from neomodel.config import get_config
 
 
@@ -205,11 +204,8 @@ async def test_transaction_timeout_explicit(spy_on_db_begin):
 
 @mark_async_test
 async def test_transaction_timeout_fires():
-    with raises(
-        ClientError,
-        match="{neo4j_code: Neo.ClientError.Transaction.TransactionTimedOut",
-    ):
-        async with AsyncTransactionProxy(adb, timeout=1):
+    with raises(ClientError, match="TransactionTimedOut"):
+        async with adb.transaction(timeout=1):
             await adb.cypher_query("CALL apoc.util.sleep(3000)")
 
 
@@ -219,11 +215,8 @@ async def test_transaction_timeout_via_config_fires(spy_on_db_begin):
     original = config.transaction_timeout
     try:
         config.transaction_timeout = 1.42
-        with raises(
-            ClientError,
-            match="{neo4j_code: Neo.ClientError.Transaction.TransactionTimedOut",
-        ):
-            async with AsyncTransactionProxy(adb):
+        with raises(ClientError, match="TransactionTimedOut"):
+            async with adb.transaction:
                 await adb.cypher_query("CALL apoc.util.sleep(3000)")
     finally:
         config.transaction_timeout = original
@@ -231,5 +224,19 @@ async def test_transaction_timeout_via_config_fires(spy_on_db_begin):
 
 @mark_async_test
 async def test_transaction_timeout_succeeds():
-    async with AsyncTransactionProxy(adb, timeout=2):
+    async with adb.transaction(timeout=2):
         await adb.cypher_query("CALL apoc.util.sleep(500)")
+
+
+@mark_async_test
+async def test_transaction_timeout_as_decorator(spy_on_db_begin):
+    @adb.transaction(timeout=4.2)
+    async def run_in_transaction():
+        await adb.cypher_query("RETURN 1")
+
+    await run_in_transaction()
+
+    assert spy_on_db_begin[-1] == (
+        (),
+        {"access_mode": None, "bookmarks": None, "timeout": 4.2},
+    )

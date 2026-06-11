@@ -449,6 +449,13 @@ class AsyncDatabase:
     ) -> None:
         """
         Begins a new transaction. Raises SystemError if a transaction is already active.
+
+        :param access_mode: The access mode of the transaction, defaults to write.
+        :type access_mode: str
+        :param timeout: Transaction timeout in seconds. Falls back to
+            config.transaction_timeout when None. Pass 0 to disable the timeout
+            for this transaction (the driver will use the server default).
+        :type timeout: float | None
         """
         if (
             hasattr(self, "_active_transaction")
@@ -683,9 +690,6 @@ class AsyncDatabase:
         else:
             # Otherwise create a new session in a with to dispose of it after it has been run
             if self.driver:
-                config = get_config()
-                if config.transaction_timeout is not None:
-                    query = Query(query, timeout=config.transaction_timeout)
                 async with self.driver.session(
                     database=self._database_name,
                     impersonated_user=self.impersonated_user,
@@ -703,10 +707,24 @@ class AsyncDatabase:
 
         return results, meta
 
+    @staticmethod
+    def _build_run_query(
+        session: AsyncSession | AsyncTransaction, query: str
+    ) -> str | Query:
+        """
+        Wrap the query so the configured transaction timeout applies to auto-commit
+        queries. The driver only accepts a timeout on session.run; queries running in
+        an explicit transaction inherit the timeout given to begin_transaction.
+        """
+        timeout = get_config().transaction_timeout
+        if timeout is not None and isinstance(session, AsyncSession):
+            return Query(query, timeout=timeout)
+        return query
+
     async def _run_cypher_query(
         self,
         session: AsyncSession | AsyncTransaction,
-        query: str | Query,
+        query: str,
         params: dict[str, Any],
         handle_unique: bool,
         retry_on_session_expire: bool,
@@ -717,7 +735,9 @@ class AsyncDatabase:
             start = time.time()
             if self._parallel_runtime:
                 query = "CYPHER runtime=parallel " + query
-            response: AsyncResult = await session.run(query=query, parameters=params)
+            response: AsyncResult = await session.run(
+                query=self._build_run_query(session, query), parameters=params
+            )
             results, meta = [list(r.values()) async for r in response], response.keys()
             end = time.time()
 
@@ -789,7 +809,9 @@ class AsyncDatabase:
             if self._parallel_runtime:
                 query = "CYPHER runtime=parallel " + query
 
-            response: AsyncResult = await session.run(query=query, parameters=params)
+            response: AsyncResult = await session.run(
+                query=self._build_run_query(session, query), parameters=params
+            )
             keys = response.keys()
 
             # Stream results one record at a time
@@ -928,11 +950,13 @@ class AsyncDatabase:
     async def clear_neo4j_database(
         self, clear_constraints: bool = False, clear_indexes: bool = False
     ) -> None:
-        await self.cypher_query("""
+        await self.cypher_query(
+            """
             MATCH (a)
             CALL { WITH a DETACH DELETE a }
             IN TRANSACTIONS OF 5000 rows
-        """)
+        """
+        )
         if clear_constraints:
             await self.drop_constraints()
         if clear_indexes:
@@ -1178,8 +1202,10 @@ class AsyncDatabase:
                 f" + Creating node unique constraint for {property_name} on label {target_cls.__label__} for class {target_cls.__module__}.{target_cls.__name__}\n"
             )
         try:
-            await self.cypher_query(f"""CREATE CONSTRAINT {constraint_name}
-                            FOR (n:{label}) REQUIRE n.{property_name} IS UNIQUE""")
+            await self.cypher_query(
+                f"""CREATE CONSTRAINT {constraint_name}
+                            FOR (n:{label}) REQUIRE n.{property_name} IS UNIQUE"""
+            )
         except ClientError as e:
             if e.code in (
                 RULE_ALREADY_EXISTS,

@@ -62,7 +62,18 @@ class AsyncTransactionProxy:
         if not exc_value:
             self.last_bookmarks = await self.db.commit()
 
-    def __call__(self, func: Callable) -> Callable:
+    def __call__(
+        self, func: Callable | None = None, *, timeout: float | None = None
+    ) -> Any:
+        if func is None:
+            # Called with options only, e.g. db.transaction(timeout=5):
+            # return a new proxy usable as a context manager or decorator
+            return self.__class__(
+                self.db,
+                access_mode=self.access_mode,
+                parallel_runtime=self.parallel_runtime,
+                timeout=timeout if timeout is not None else self.timeout,
+            )
         if AsyncUtil.is_async_code and not iscoroutinefunction(func):
             raise TypeError(NOT_COROUTINE_ERROR)
 
@@ -75,7 +86,9 @@ class AsyncTransactionProxy:
 
     @property
     def with_bookmark(self) -> "BookmarkingAsyncTransactionProxy":
-        return BookmarkingAsyncTransactionProxy(self.db, self.access_mode)
+        return BookmarkingAsyncTransactionProxy(
+            self.db, self.access_mode, timeout=self.timeout
+        )
 
 
 class BookmarkingAsyncTransactionProxy(AsyncTransactionProxy):

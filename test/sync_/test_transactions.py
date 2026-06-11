@@ -7,7 +7,6 @@ from pytest import raises
 
 from neomodel import StringProperty, StructuredNode, UniqueProperty, db
 from neomodel.config import get_config
-from neomodel.sync_.transaction import TransactionProxy
 
 
 class APerson(StructuredNode):
@@ -205,11 +204,8 @@ def test_transaction_timeout_explicit(spy_on_db_begin):
 
 @mark_sync_test
 def test_transaction_timeout_fires():
-    with raises(
-        ClientError,
-        match="{neo4j_code: Neo.ClientError.Transaction.TransactionTimedOut",
-    ):
-        with TransactionProxy(db, timeout=1):
+    with raises(ClientError, match="TransactionTimedOut"):
+        with db.transaction(timeout=1):
             db.cypher_query("CALL apoc.util.sleep(3000)")
 
 
@@ -219,11 +215,8 @@ def test_transaction_timeout_via_config_fires(spy_on_db_begin):
     original = config.transaction_timeout
     try:
         config.transaction_timeout = 1.42
-        with raises(
-            ClientError,
-            match="{neo4j_code: Neo.ClientError.Transaction.TransactionTimedOut",
-        ):
-            with TransactionProxy(db):
+        with raises(ClientError, match="TransactionTimedOut"):
+            with db.transaction:
                 db.cypher_query("CALL apoc.util.sleep(3000)")
     finally:
         config.transaction_timeout = original
@@ -231,5 +224,19 @@ def test_transaction_timeout_via_config_fires(spy_on_db_begin):
 
 @mark_sync_test
 def test_transaction_timeout_succeeds():
-    with TransactionProxy(db, timeout=2):
+    with db.transaction(timeout=2):
         db.cypher_query("CALL apoc.util.sleep(500)")
+
+
+@mark_sync_test
+def test_transaction_timeout_as_decorator(spy_on_db_begin):
+    @db.transaction(timeout=4.2)
+    def run_in_transaction():
+        db.cypher_query("RETURN 1")
+
+    run_in_transaction()
+
+    assert spy_on_db_begin[-1] == (
+        (),
+        {"access_mode": None, "bookmarks": None, "timeout": 4.2},
+    )

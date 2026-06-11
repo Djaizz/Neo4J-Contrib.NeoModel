@@ -447,6 +447,13 @@ class Database:
     ) -> None:
         """
         Begins a new transaction. Raises SystemError if a transaction is already active.
+
+        :param access_mode: The access mode of the transaction, defaults to write.
+        :type access_mode: str
+        :param timeout: Transaction timeout in seconds. Falls back to
+            config.transaction_timeout when None. Pass 0 to disable the timeout
+            for this transaction (the driver will use the server default).
+        :type timeout: float | None
         """
         if (
             hasattr(self, "_active_transaction")
@@ -679,9 +686,6 @@ class Database:
         else:
             # Otherwise create a new session in a with to dispose of it after it has been run
             if self.driver:
-                config = get_config()
-                if config.transaction_timeout is not None:
-                    query = Query(query, timeout=config.transaction_timeout)
                 with self.driver.session(
                     database=self._database_name,
                     impersonated_user=self.impersonated_user,
@@ -699,10 +703,22 @@ class Database:
 
         return results, meta
 
+    @staticmethod
+    def _build_run_query(session: Session | Transaction, query: str) -> str | Query:
+        """
+        Wrap the query so the configured transaction timeout applies to auto-commit
+        queries. The driver only accepts a timeout on session.run; queries running in
+        an explicit transaction inherit the timeout given to begin_transaction.
+        """
+        timeout = get_config().transaction_timeout
+        if timeout is not None and isinstance(session, Session):
+            return Query(query, timeout=timeout)
+        return query
+
     def _run_cypher_query(
         self,
         session: Session | Transaction,
-        query: str | Query,
+        query: str,
         params: dict[str, Any],
         handle_unique: bool,
         retry_on_session_expire: bool,
@@ -713,7 +729,9 @@ class Database:
             start = time.time()
             if self._parallel_runtime:
                 query = "CYPHER runtime=parallel " + query
-            response: Result = session.run(query=query, parameters=params)
+            response: Result = session.run(
+                query=self._build_run_query(session, query), parameters=params
+            )
             results, meta = [list(r.values()) for r in response], response.keys()
             end = time.time()
 
@@ -785,7 +803,9 @@ class Database:
             if self._parallel_runtime:
                 query = "CYPHER runtime=parallel " + query
 
-            response: Result = session.run(query=query, parameters=params)
+            response: Result = session.run(
+                query=self._build_run_query(session, query), parameters=params
+            )
             keys = response.keys()
 
             # Stream results one record at a time
