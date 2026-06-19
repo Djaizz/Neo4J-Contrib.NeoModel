@@ -66,6 +66,19 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Parameter names whose values must never be written to logs.
+SENSITIVE_PARAM_KEYS = frozenset({"password"})
+
+
+def _redact_params(params: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Return a copy of ``params`` with sensitive values masked, for safe logging."""
+    if not params:
+        return params
+    return {
+        key: ("******" if key in SENSITIVE_PARAM_KEYS else value)
+        for key, value in params.items()
+    }
+
 
 def ensure_connection(func: Callable) -> Callable:
     """Decorator that ensures a connection is established before executing the decorated function.
@@ -771,7 +784,7 @@ class Database:
                 "query: "
                 + query
                 + "\nparams: "
-                + repr(params)
+                + repr(_redact_params(params))
                 + f"\ntook: {tte:.2g}s\n"
             )
 
@@ -828,7 +841,7 @@ class Database:
                     "query: "
                     + query
                     + "\nparams: "
-                    + repr(params)
+                    + repr(_redact_params(params))
                     + f"\ntook: {tte:.2g}s\n"
                 )
 
@@ -937,16 +950,22 @@ class Database:
         )
 
     def change_neo4j_password(self, user: str, new_password: str) -> None:
-        self.cypher_query(f"ALTER USER {user} SET PASSWORD '{new_password}'")
+        escaped_user = user.replace("`", "``")
+        self.cypher_query(
+            f"ALTER USER `{escaped_user}` SET PASSWORD $password",
+            {"password": new_password},
+        )
 
     def clear_neo4j_database(
         self, clear_constraints: bool = False, clear_indexes: bool = False
     ) -> None:
-        self.cypher_query("""
+        self.cypher_query(
+            """
             MATCH (a)
             CALL { WITH a DETACH DELETE a }
             IN TRANSACTIONS OF 5000 rows
-        """)
+        """
+        )
         if clear_constraints:
             self.drop_constraints()
         if clear_indexes:
@@ -1190,8 +1209,10 @@ class Database:
                 f" + Creating node unique constraint for {property_name} on label {target_cls.__label__} for class {target_cls.__module__}.{target_cls.__name__}\n"
             )
         try:
-            self.cypher_query(f"""CREATE CONSTRAINT {constraint_name}
-                            FOR (n:{label}) REQUIRE n.{property_name} IS UNIQUE""")
+            self.cypher_query(
+                f"""CREATE CONSTRAINT {constraint_name}
+                            FOR (n:{label}) REQUIRE n.{property_name} IS UNIQUE"""
+            )
         except ClientError as e:
             if e.code in (
                 RULE_ALREADY_EXISTS,

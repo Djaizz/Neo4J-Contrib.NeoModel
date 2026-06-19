@@ -66,6 +66,19 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Parameter names whose values must never be written to logs.
+SENSITIVE_PARAM_KEYS = frozenset({"password"})
+
+
+def _redact_params(params: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Return a copy of ``params`` with sensitive values masked, for safe logging."""
+    if not params:
+        return params
+    return {
+        key: ("******" if key in SENSITIVE_PARAM_KEYS else value)
+        for key, value in params.items()
+    }
+
 
 def ensure_connection(func: Callable) -> Callable:
     """Decorator that ensures a connection is established before executing the decorated function.
@@ -777,7 +790,7 @@ class AsyncDatabase:
                 "query: "
                 + query
                 + "\nparams: "
-                + repr(params)
+                + repr(_redact_params(params))
                 + f"\ntook: {tte:.2g}s\n"
             )
 
@@ -834,7 +847,7 @@ class AsyncDatabase:
                     "query: "
                     + query
                     + "\nparams: "
-                    + repr(params)
+                    + repr(_redact_params(params))
                     + f"\ntook: {tte:.2g}s\n"
                 )
 
@@ -945,7 +958,11 @@ class AsyncDatabase:
         )
 
     async def change_neo4j_password(self, user: str, new_password: str) -> None:
-        await self.cypher_query(f"ALTER USER {user} SET PASSWORD '{new_password}'")
+        escaped_user = user.replace("`", "``")
+        await self.cypher_query(
+            f"ALTER USER `{escaped_user}` SET PASSWORD $password",
+            {"password": new_password},
+        )
 
     async def clear_neo4j_database(
         self, clear_constraints: bool = False, clear_indexes: bool = False
