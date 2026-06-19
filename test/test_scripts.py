@@ -48,13 +48,20 @@ def test_neomodel_install_labels():
         (element["type"], element["labelsOrTypes"], element["properties"])
         for element in constraints
     ]
-    assert ("UNIQUENESS", ["ScriptsTestNode"], ["personal_id"]) in parsed_constraints
+    # Neo4j renamed constraint types: UNIQUENESS -> NODE_PROPERTY_UNIQUENESS,
+    # RELATIONSHIP_UNIQUENESS -> RELATIONSHIP_PROPERTY_UNIQUENESS
+    assert any(
+        (constraint_type, ["ScriptsTestNode"], ["personal_id"]) in parsed_constraints
+        for constraint_type in ("UNIQUENESS", "NODE_PROPERTY_UNIQUENESS")
+    )
     if db.version_is_higher_than("5.7"):
-        assert (
-            "RELATIONSHIP_UNIQUENESS",
-            ["REL"],
-            ["some_unique_property"],
-        ) in parsed_constraints
+        assert any(
+            (constraint_type, ["REL"], ["some_unique_property"]) in parsed_constraints
+            for constraint_type in (
+                "RELATIONSHIP_UNIQUENESS",
+                "RELATIONSHIP_PROPERTY_UNIQUENESS",
+            )
+        )
     indexes = db.list_indexes()
     parsed_indexes = [
         (element["labelsOrTypes"], element["properties"]) for element in indexes

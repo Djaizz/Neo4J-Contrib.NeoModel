@@ -107,6 +107,41 @@ With explicit designation::
     ...
     db.begin() # By default a **WRITE** transaction
 
+Transaction timeouts
+--------------------
+
+A timeout (in seconds) can be set for a single transaction, after which the server
+will terminate it::
+
+    with db.transaction(timeout=5):
+        ...
+
+    @db.transaction(timeout=5)
+    def update_user_name(uid, name):
+        ...
+
+    db.begin(timeout=5)
+    ...
+
+A default timeout for all transactions - including auto-commit queries run outside
+an explicit transaction - can be set via the configuration::
+
+    from neomodel import get_config
+
+    config = get_config()
+    config.transaction_timeout = 30.0
+
+or through the ``NEOMODEL_TRANSACTION_TIMEOUT`` environment variable.
+
+When no timeout is set (the default), the server decides, based on its
+``db.transaction.timeout`` setting.
+
+A few notes on precedence:
+
+* An explicit ``timeout`` passed to ``db.transaction(...)`` or ``db.begin(...)`` takes precedence over ``config.transaction_timeout``.
+* Passing ``timeout=None`` (the default) means "fall back to the configured value", so it cannot be used to cancel a configured default for a single transaction. Pass ``timeout=0`` instead to let the server default apply to that transaction.
+* ``config.transaction_timeout`` must be a positive number or ``None``.
+
 Bookmarks
 ---------
 Neomodel also supports bookmarks. When using neomodel over a `Neo4J causal cluster <https://neo4j.com/docs/

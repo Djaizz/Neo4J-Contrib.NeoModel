@@ -36,6 +36,7 @@ Advanced driver configuration, for example::
     config.max_connection_pool_size = 50
     config.encrypted = True
     config.keep_alive = True
+    config.transaction_timeout = 30.0  # default timeout in seconds for all transactions
 
 Self-managed Connection
 ~~~~~~~~~~~~~~~~~~~~~~~
@@ -110,6 +111,7 @@ Configuration is automatically loaded from environment variables using the ``NEO
 * ``NEOMODEL_MAX_CONNECTION_LIFETIME`` - Maximum connection lifetime
 * ``NEOMODEL_MAX_CONNECTION_POOL_SIZE`` - Maximum connection pool size
 * ``NEOMODEL_MAX_TRANSACTION_RETRY_TIME`` - Maximum transaction retry time
+* ``NEOMODEL_TRANSACTION_TIMEOUT`` - Default transaction timeout in seconds (unset = server decides)
 * ``NEOMODEL_USER_AGENT`` - User agent string
 * ``NEOMODEL_FORCE_TIMEZONE`` - Force timezone-aware datetime objects
 * ``NEOMODEL_SOFT_CARDINALITY_CHECK`` - Enable soft cardinality checking
