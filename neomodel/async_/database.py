@@ -56,7 +56,11 @@ from neomodel.exceptions import (
     UniqueProperty,
 )
 from neomodel.properties import FulltextIndex, Property, VectorIndex
-from neomodel.util import version_tag_to_integer
+from neomodel.util import (
+    escape_cypher_string_literal,
+    escape_identifier,
+    version_tag_to_integer,
+)
 
 # The imports inside this block are only for type checking tools (like mypy or IDEs) to help with code hints and error checking.
 # These imports are ignored when the code actually runs, so they don't affect runtime performance or cause circular import problems.
@@ -1049,7 +1053,9 @@ class AsyncDatabase:
 
         results_as_dict = [dict(zip(meta, row)) for row in results]
         for constraint in results_as_dict:
-            await self.cypher_query(DROP_CONSTRAINT_COMMAND + constraint["name"])
+            await self.cypher_query(
+                DROP_CONSTRAINT_COMMAND + escape_identifier(constraint["name"])
+            )
             if not quiet:
                 stdout.write(
                     (
@@ -1075,7 +1081,9 @@ class AsyncDatabase:
 
         indexes = await self.list_indexes(exclude_token_lookup=True)
         for index in indexes:
-            await self.cypher_query(DROP_INDEX_COMMAND + index["name"])
+            await self.cypher_query(
+                DROP_INDEX_COMMAND + escape_identifier(index["name"])
+            )
             if not quiet:
                 stdout.write(
                     f" - Dropping index on labels {','.join(index['labelsOrTypes'])} with properties {','.join(index['properties'])}.\n"
@@ -1174,7 +1182,9 @@ class AsyncDatabase:
             )
         try:
             await self.cypher_query(
-                f"CREATE INDEX {index_name} FOR (n:{label}) ON (n.{property_name}); "
+                f"CREATE INDEX {escape_identifier(index_name)} "
+                f"FOR (n:{escape_identifier(label)}) "
+                f"ON (n.{escape_identifier(property_name)}); "
             )
         except ClientError as e:
             if e.code in (
@@ -1201,10 +1211,10 @@ class AsyncDatabase:
                     f" + Creating fulltext index for {property_name} on label {target_cls.__label__} for class {target_cls.__module__}.{target_cls.__name__}\n"
                 )
             query = f"""
-                CREATE FULLTEXT INDEX {index_name} FOR (n:{label}) ON EACH [n.{property_name}]
+                CREATE FULLTEXT INDEX {escape_identifier(index_name)} FOR (n:{escape_identifier(label)}) ON EACH [n.{escape_identifier(property_name)}]
                 OPTIONS {{
                     indexConfig: {{
-                        `fulltext.analyzer`: '{fulltext_index.analyzer}',
+                        `fulltext.analyzer`: '{escape_cypher_string_literal(fulltext_index.analyzer)}',
                         `fulltext.eventually_consistent`: {fulltext_index.eventually_consistent}
                     }}
                 }};
@@ -1240,11 +1250,11 @@ class AsyncDatabase:
                     f" + Creating vector index for {property_name} on label {label} for class {target_cls.__module__}.{target_cls.__name__}\n"
                 )
             query = f"""
-                CREATE VECTOR INDEX {index_name} FOR (n:{label}) ON n.{property_name}
+                CREATE VECTOR INDEX {escape_identifier(index_name)} FOR (n:{escape_identifier(label)}) ON n.{escape_identifier(property_name)}
                 OPTIONS {{
                     indexConfig: {{
                         `vector.dimensions`: {vector_index.dimensions},
-                        `vector.similarity_function`: '{vector_index.similarity_function}'
+                        `vector.similarity_function`: '{escape_cypher_string_literal(vector_index.similarity_function)}'
                     }}
                 }};
             """
@@ -1274,8 +1284,8 @@ class AsyncDatabase:
             )
         try:
             await self.cypher_query(
-                f"""CREATE CONSTRAINT {constraint_name}
-                            FOR (n:{label}) REQUIRE n.{property_name} IS UNIQUE"""
+                f"""CREATE CONSTRAINT {escape_identifier(constraint_name)}
+                            FOR (n:{escape_identifier(label)}) REQUIRE n.{escape_identifier(property_name)} IS UNIQUE"""
             )
         except ClientError as e:
             if e.code in (
@@ -1302,7 +1312,9 @@ class AsyncDatabase:
             )
         try:
             await self.cypher_query(
-                f"CREATE INDEX {index_name} FOR ()-[r:{relationship_type}]-() ON (r.{property_name}); "
+                f"CREATE INDEX {escape_identifier(index_name)} "
+                f"FOR ()-[r:{escape_identifier(relationship_type)}]-() "
+                f"ON (r.{escape_identifier(property_name)}); "
             )
         except ClientError as e:
             if e.code in (
@@ -1330,10 +1342,10 @@ class AsyncDatabase:
                     f" + Creating fulltext index for {property_name} on relationship type {relationship_type} for relationship model {target_cls.__module__}.{relationship_cls.__name__}\n"
                 )
             query = f"""
-                CREATE FULLTEXT INDEX {index_name} FOR ()-[r:{relationship_type}]-() ON EACH [r.{property_name}]
+                CREATE FULLTEXT INDEX {escape_identifier(index_name)} FOR ()-[r:{escape_identifier(relationship_type)}]-() ON EACH [r.{escape_identifier(property_name)}]
                 OPTIONS {{
                     indexConfig: {{
-                        `fulltext.analyzer`: '{fulltext_index.analyzer}',
+                        `fulltext.analyzer`: '{escape_cypher_string_literal(fulltext_index.analyzer)}',
                         `fulltext.eventually_consistent`: {fulltext_index.eventually_consistent}
                     }}
                 }};
@@ -1372,11 +1384,11 @@ class AsyncDatabase:
                     f" + Creating vector index for {property_name} on relationship type {relationship_type} for relationship model {target_cls.__module__}.{relationship_cls.__name__}\n"
                 )
             query = f"""
-                CREATE VECTOR INDEX {index_name} FOR ()-[r:{relationship_type}]-() ON r.{property_name}
+                CREATE VECTOR INDEX {escape_identifier(index_name)} FOR ()-[r:{escape_identifier(relationship_type)}]-() ON r.{escape_identifier(property_name)}
                 OPTIONS {{
                     indexConfig: {{
                         `vector.dimensions`: {vector_index.dimensions},
-                        `vector.similarity_function`: '{vector_index.similarity_function}'
+                        `vector.similarity_function`: '{escape_cypher_string_literal(vector_index.similarity_function)}'
                     }}
                 }};
             """
@@ -1412,8 +1424,8 @@ class AsyncDatabase:
                 )
             try:
                 await self.cypher_query(
-                    f"""CREATE CONSTRAINT {constraint_name}
-                                FOR ()-[r:{relationship_type}]-() REQUIRE r.{property_name} IS UNIQUE"""
+                    f"""CREATE CONSTRAINT {escape_identifier(constraint_name)}
+                                FOR ()-[r:{escape_identifier(relationship_type)}]-() REQUIRE r.{escape_identifier(property_name)} IS UNIQUE"""
                 )
             except ClientError as e:
                 if e.code in (
