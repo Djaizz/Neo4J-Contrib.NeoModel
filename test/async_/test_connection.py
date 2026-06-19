@@ -129,14 +129,41 @@ async def test_connect_to_non_default_database():
 
 @mark_async_test
 @pytest.mark.parametrize(
-    "url", ["bolt://user:password", "http://user:password@localhost:7687"]
+    "url, expected_in_message",
+    [
+        ("bolt://user:password", "bolt://user:password"),
+        ("http://user:password@localhost:7687", "http://user:***@localhost:7687"),
+    ],
 )
-async def test_wrong_url_format(url):
-    with pytest.raises(
-        ValueError,
-        match=rf"Expecting url format: bolt://user:password@localhost:7687 got {url}",
-    ):
+async def test_wrong_url_format(url, expected_in_message):
+    with pytest.raises(ValueError) as exc_info:
         await adb.set_connection(url=url)
+    message = str(exc_info.value)
+    assert "Expecting url format: bolt://user:password@localhost:7687" in message
+    assert expected_in_message in message
+
+
+@mark_async_test
+async def test_password_not_leaked_in_wrong_url_error():
+    # A malformed but credential-bearing URL must not leak its password into the
+    # exception message (which typically ends up in logs / error trackers).
+    secret = "sup3rs3cr3t"
+    with pytest.raises(ValueError) as exc_info:
+        await adb.set_connection(url=f"http://user:{secret}@localhost:7687")
+    assert secret not in str(exc_info.value)
+
+
+@mark_async_test
+async def test_stored_url_has_password_redacted():
+    # adb.url is a documented attribute and may be logged/inspected, so the
+    # password must not be retained there.
+    config = get_config()
+    await adb.set_connection(url=config.database_url)
+    assert adb.url is not None
+    assert NEO4J_PASSWORD not in adb.url
+    assert ":***@" in adb.url
+    # The connection must still be usable (retry relies on the private URL).
+    assert await get_current_database_name() is not None
 
 
 @mark_async_test

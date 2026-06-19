@@ -36,7 +36,12 @@ def test_neomodel_install_labels():
     assert result.returncode == 0
 
     result = subprocess.run(
-        ["neomodel_install_labels", "test/test_scripts.py", "--db", db.url],
+        [
+            "neomodel_install_labels",
+            "test/test_scripts.py",
+            "--db",
+            get_config().database_url,
+        ],
         capture_output=True,
         text=True,
         check=False,

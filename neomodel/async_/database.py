@@ -148,6 +148,13 @@ class AsyncDatabase:
             "_active_transaction", default=None
         )
         self.__url: ContextVar[str | None] = ContextVar("url", default=None)
+        # The credential-bearing URL is kept separately from the public,
+        # password-redacted ``url`` so that the latter can be safely logged or
+        # inspected. This one is only used internally to re-establish the
+        # connection (e.g. on session expiry).
+        self.__connection_url: ContextVar[str | None] = ContextVar(
+            "connection_url", default=None
+        )
         self.__driver: ContextVar[AsyncDriver | None] = ContextVar(
             "driver", default=None
         )
@@ -215,6 +222,33 @@ class AsyncDatabase:
     @url.setter
     def url(self, value: str | None) -> None:
         self.__url.set(value)
+
+    @property
+    def _connection_url(self) -> str | None:
+        return self.__connection_url.get()
+
+    @_connection_url.setter
+    def _connection_url(self, value: str | None) -> None:
+        self.__connection_url.set(value)
+
+    @staticmethod
+    def _redact_url_password(url: str) -> str:
+        """
+        Return a copy of a Neo4j connection URL with the password component
+        replaced by ``***`` so the URL can be stored or surfaced in error
+        messages without leaking credentials.
+        """
+        scheme_index = url.find("://")
+        at_index = url.rfind("@")
+        if scheme_index == -1 or at_index == -1:
+            # No userinfo section, so there is no password to redact.
+            return url
+        credentials_start = scheme_index + len("://")
+        credentials = url[credentials_start:at_index]
+        if ":" not in credentials:
+            return url
+        username = credentials.split(":", 1)[0]
+        return f"{url[:credentials_start]}{username}:***{url[at_index:]}"
 
     @property
     def driver(self) -> AsyncDriver | None:
@@ -347,7 +381,8 @@ class AsyncDatabase:
             database_name = parsed_url.path.strip("/")
         else:
             raise ValueError(
-                f"Expecting url format: bolt://user:password@localhost:7687 got {url}"
+                "Expecting url format: bolt://user:password@localhost:7687 got "
+                f"{self._redact_url_password(url)}"
             )
 
         config = get_config()
@@ -372,7 +407,10 @@ class AsyncDatabase:
             parsed_url.scheme + "://" + hostname,
             **options,  # type: ignore[arg-type]
         )
-        self.url = url
+        # Keep the credential-bearing URL private (for reconnection) and expose
+        # only a password-redacted version through the public ``url`` attribute.
+        self._connection_url = url
+        self.url = self._redact_url_password(url)
         # The database name can be provided through the url or the config
         if database_name == "":
             if hasattr(config, "database_name") and config.database_name:
@@ -388,6 +426,7 @@ class AsyncDatabase:
         self._database_version = None
         self._database_edition = None
         self._database_name = None
+        self._connection_url = None
         if self.driver is not None:
             await self.driver.close()
             self.driver = None
@@ -773,7 +812,7 @@ class AsyncDatabase:
                 raise exc_info[1].with_traceback(exc_info[2])
         except SessionExpired:
             if retry_on_session_expire:
-                await self.set_connection(url=self.url)
+                await self.set_connection(url=self._connection_url)
                 return await self.cypher_query(
                     query=query,
                     params=params,
