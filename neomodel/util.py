@@ -49,6 +49,15 @@ class _UnsavedNode:
         return self.__repr__()
 
 
+def escape_label(label: str) -> str:
+    """
+    Backtick-escape a label (or other identifier) for safe interpolation into a
+    Cypher query, doubling any embedded backticks so the identifier cannot be
+    terminated early.
+    """
+    return "`" + label.replace("`", "``") + "`"
+
+
 def get_graph_entity_properties(entity: Entity) -> dict:
     """
     Get the properties from a neo4j.graph.Entity (neo4j.graph.Node or neo4j.graph.Relationship) object.

@@ -17,7 +17,7 @@ from neomodel.hooks import hooks
 from neomodel.properties import Property
 from neomodel.sync_.database import db
 from neomodel.sync_.property_manager import PropertyManager
-from neomodel.util import _UnsavedNode, classproperty
+from neomodel.util import _UnsavedNode, classproperty, escape_label
 
 if TYPE_CHECKING:
     from neomodel.sync_.match import NodeSet
@@ -273,18 +273,41 @@ class StructuredNode(NodeBase):
 
         # Determine merge key and labels
         if merge_by:
-            # Use custom merge keys
-            merge_keys = merge_by["keys"]
-            merge_labels = merge_by.get("label", ":".join(cls.inherited_labels()))
+            # Use custom merge keys. These (and the label) come from the caller,
+            # so validate the keys against the model's defined properties and
+            # backtick-escape every identifier to prevent Cypher injection.
+            defined = cls.defined_properties(aliases=False, rels=False)
+            merge_db_keys = []
+            for key in merge_by["keys"]:
+                if key not in defined:
+                    raise ValueError(
+                        f"Invalid merge_by key '{key}': not a defined property of "
+                        f"{cls.__name__}"
+                    )
+                merge_db_keys.append(defined[key].get_db_property_name(key))
 
-            n_merge_prm = ", ".join(f"{key}: params.create.{key}" for key in merge_keys)
+            if "label" in merge_by:
+                merge_labels = escape_label(merge_by["label"])
+            else:
+                merge_labels = ":".join(
+                    escape_label(label) for label in cls.inherited_labels()
+                )
+
+            n_merge_prm = ", ".join(
+                f"`{key}`: params.create.`{key}`" for key in merge_db_keys
+            )
         else:
             # Use default required properties
-            merge_labels = ":".join(cls.inherited_labels())
+            merge_labels = ":".join(
+                escape_label(label) for label in cls.inherited_labels()
+            )
             n_merge_prm = ", ".join(
                 (
-                    f"{getattr(cls, p).get_db_property_name(p)}: params.create.{getattr(cls, p).get_db_property_name(p)}"
-                    for p in cls.__required_properties__
+                    f"`{db_name}`: params.create.`{db_name}`"
+                    for db_name in (
+                        getattr(cls, p).get_db_property_name(p)
+                        for p in cls.__required_properties__
+                    )
                 )
             )
 
