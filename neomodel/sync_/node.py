@@ -49,15 +49,19 @@ class NodeMeta(type):
                     "Property name 'deleted' is not allowed as it conflicts with neomodel internals."
                 )
             elif "id" in namespace:
-                raise ValueError("""
+                raise ValueError(
+                    """
                         Property name 'id' is not allowed as it conflicts with neomodel internals.
                         Consider using 'uid' or 'identifier' as id is also a Neo4j internal.
-                    """)
+                    """
+                )
             elif "element_id" in namespace:
-                raise ValueError("""
+                raise ValueError(
+                    """
                         Property name 'element_id' is not allowed as it conflicts with neomodel internals.
                         Consider using 'uid' or 'identifier' as element_id is also a Neo4j internal.
-                    """)
+                    """
+                )
             for key, value in (
                 (x, y) for x, y in namespace.items() if isinstance(y, Property)
             ):
@@ -642,14 +646,28 @@ class StructuredNode(NodeBase):
             query = f"MATCH (n) WHERE {db.get_id_method()}(n)=$self\n"
 
             if params:
+                # Decouple the Cypher parameter name from the (potentially
+                # untrusted) property key. SemiStructuredNode allows arbitrary
+                # property keys to flow through deflate, so the key is
+                # backtick-escaped to prevent Cypher injection, and a positional
+                # parameter name is used for the value.
+                set_clauses = []
+                query_params = {}
+                for index, (key, value) in enumerate(params.items()):
+                    param_name = f"p{index}"
+                    escaped_key = key.replace("`", "``")
+                    set_clauses.append(f"n.`{escaped_key}` = ${param_name}")
+                    query_params[param_name] = value
                 query += "SET "
-                query += ",\n".join([f"n.{key} = ${key}" for key in params])
+                query += ",\n".join(set_clauses)
                 query += "\n"
+            else:
+                query_params = {}
             if self.inherited_labels():
                 query += "\n".join(
                     [f"SET n:`{label}`" for label in self.inherited_labels()]
                 )
-            self.cypher(query, params)
+            self.cypher(query, query_params)
         elif hasattr(self, "deleted") and self.deleted:
             raise ValueError(
                 f"{self.__class__.__name__}.save() attempted on deleted node"
