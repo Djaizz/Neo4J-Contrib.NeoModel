@@ -196,18 +196,59 @@ async def test_cypher_query_transaction_timeout_via_config_succeeds():
 
 
 @mark_async_test
-async def test_cypher_query_transaction_timeout_with_debug_logging(monkeypatch):
+async def test_cypher_query_transaction_timeout_with_debug_logging():
     # Regression test: the configured timeout must not break the
-    # NEOMODEL_CYPHER_DEBUG logging of the executed query
-    monkeypatch.setenv("NEOMODEL_CYPHER_DEBUG", "1")
+    # Cypher debug logging of the executed query
     config = get_config()
-    original = config.transaction_timeout
+    original_timeout = config.transaction_timeout
+    original_debug = config.cypher_debug
     try:
+        config.cypher_debug = True
         config.transaction_timeout = 5
         results, meta = await adb.cypher_query("RETURN 1")
         assert results[0][0] == 1
     finally:
-        config.transaction_timeout = original
+        config.transaction_timeout = original_timeout
+        config.cypher_debug = original_debug
+
+
+@mark_async_test
+async def test_cypher_debug_log_masks_sensitive_params(caplog):
+    import logging
+
+    config = get_config()
+    original_debug = config.cypher_debug
+    try:
+        config.cypher_debug = True
+        with caplog.at_level(logging.DEBUG, logger="neomodel.async_.database"):
+            await adb.cypher_query("RETURN $password AS p", {"password": "s3cr3t"})
+        logged = "\n".join(record.getMessage() for record in caplog.records)
+        assert "s3cr3t" not in logged
+        assert "******" in logged
+    finally:
+        config.cypher_debug = original_debug
+
+
+@mark_async_test
+async def test_cypher_debug_log_uses_custom_redaction_hook(caplog):
+    import logging
+
+    config = get_config()
+    original_debug = config.cypher_debug
+    original_hook = config.cypher_log_redaction_hook
+    try:
+        config.cypher_debug = True
+        config.cypher_log_redaction_hook = lambda params: {
+            key: "<hidden>" for key in params
+        }
+        with caplog.at_level(logging.DEBUG, logger="neomodel.async_.database"):
+            await adb.cypher_query("RETURN $email AS e", {"email": "user@example.com"})
+        logged = "\n".join(record.getMessage() for record in caplog.records)
+        assert "user@example.com" not in logged
+        assert "<hidden>" in logged
+    finally:
+        config.cypher_debug = original_debug
+        config.cypher_log_redaction_hook = original_hook
 
 
 @mark_async_test

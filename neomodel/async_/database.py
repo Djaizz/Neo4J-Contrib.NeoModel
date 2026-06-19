@@ -71,13 +71,40 @@ SENSITIVE_PARAM_KEYS = frozenset({"password"})
 
 
 def _redact_params(params: dict[str, Any] | None) -> dict[str, Any] | None:
-    """Return a copy of ``params`` with sensitive values masked, for safe logging."""
+    """Return a copy of ``params`` suitable for logging.
+
+    Query parameters may contain sensitive data (PII, secrets, password hashes,
+    whatever the application stores). If a custom redaction hook is configured
+    via ``config.cypher_log_redaction_hook`` it is applied; otherwise only the
+    values of known-sensitive keys are masked.
+    """
     if not params:
         return params
+    hook = getattr(get_config(), "cypher_log_redaction_hook", None)
+    if hook is not None:
+        return hook(params)
     return {
         key: ("******" if key in SENSITIVE_PARAM_KEYS else value)
         for key, value in params.items()
     }
+
+
+def _log_slow_query(query: str, params: dict[str, Any] | None, tte: float) -> None:
+    """Log a query and its (redacted) parameters when Cypher debug logging is on.
+
+    Driven by ``config.cypher_debug`` / ``config.slow_queries`` (populated from
+    NEOMODEL_CYPHER_DEBUG / NEOMODEL_SLOW_QUERIES) rather than reading the
+    environment on every query.
+    """
+    config = get_config()
+    if config.cypher_debug and tte > config.slow_queries:
+        logger.debug(
+            "query: "
+            + query
+            + "\nparams: "
+            + repr(_redact_params(params))
+            + f"\ntook: {tte:.2g}s\n"
+        )
 
 
 def ensure_connection(func: Callable) -> Callable:
@@ -828,16 +855,7 @@ class AsyncDatabase:
             raise
 
         tte = end - start
-        if os.environ.get("NEOMODEL_CYPHER_DEBUG", False) and tte > float(
-            os.environ.get("NEOMODEL_SLOW_QUERIES", 0)
-        ):
-            logger.debug(
-                "query: "
-                + query
-                + "\nparams: "
-                + repr(_redact_params(params))
-                + f"\ntook: {tte:.2g}s\n"
-            )
+        _log_slow_query(query, params, tte)
 
         return results, meta
 
@@ -885,16 +903,7 @@ class AsyncDatabase:
 
             end = time.time()
             tte = end - start
-            if os.environ.get("NEOMODEL_CYPHER_DEBUG", False) and tte > float(
-                os.environ.get("NEOMODEL_SLOW_QUERIES", 0)
-            ):
-                logger.debug(
-                    "query: "
-                    + query
-                    + "\nparams: "
-                    + repr(_redact_params(params))
-                    + f"\ntook: {tte:.2g}s\n"
-                )
+            _log_slow_query(query, params, tte)
 
         except ClientError as e:
             if e.code == "Neo.ClientError.Schema.ConstraintValidationFailed":
