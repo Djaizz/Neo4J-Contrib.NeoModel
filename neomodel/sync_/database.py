@@ -70,8 +70,55 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Parameter names whose values must never be written to logs.
-SENSITIVE_PARAM_KEYS = frozenset({"password"})
+# Substrings that mark a query-parameter key as sensitive. Keys are normalised
+# to lowercase alphanumerics before matching, so compound and differently-styled
+# names such as "user_password", "stripe_api_key", "refresh_token" or
+# "accessKey" are all caught. This is a best-effort default; applications with
+# their own naming conventions should configure
+# ``config.cypher_log_redaction_hook``.
+SENSITIVE_PARAM_KEY_SUBSTRINGS = frozenset(
+    {
+        "password",
+        "passwd",
+        "passphrase",
+        "secret",
+        "token",
+        "apikey",
+        "privatekey",
+        "credential",
+        "authorization",
+        "accesskey",
+        "sessionkey",
+        "encryptionkey",
+    }
+)
+
+# Short or ambiguous names that are only treated as sensitive on an exact
+# (normalised) match, to avoid false positives from substring matching such as
+# "author" (auth), "passenger" (pass) or "monkey" (key).
+SENSITIVE_PARAM_KEYS = frozenset(
+    {
+        "pwd",
+        "pass",
+        "auth",
+        "key",
+        "otp",
+        "totp",
+        "mfa",
+        "pin",
+        "ssn",
+        "cvv",
+        "cvc",
+    }
+)
+
+
+def _is_sensitive_param_key(key: Any) -> bool:
+    """Return True if a query-parameter key looks like it carries a secret."""
+    normalized = "".join(char for char in str(key).lower() if char.isalnum())
+    if normalized in SENSITIVE_PARAM_KEYS:
+        return True
+    return any(token in normalized for token in SENSITIVE_PARAM_KEY_SUBSTRINGS)
 
 
 def _redact_params(params: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -79,8 +126,8 @@ def _redact_params(params: dict[str, Any] | None) -> dict[str, Any] | None:
 
     Query parameters may contain sensitive data (PII, secrets, password hashes,
     whatever the application stores). If a custom redaction hook is configured
-    via ``config.cypher_log_redaction_hook`` it is applied; otherwise only the
-    values of known-sensitive keys are masked.
+    via ``config.cypher_log_redaction_hook`` it is applied; otherwise the values
+    of keys that look sensitive (see :func:`_is_sensitive_param_key`) are masked.
     """
     if not params:
         return params
@@ -88,7 +135,7 @@ def _redact_params(params: dict[str, Any] | None) -> dict[str, Any] | None:
     if hook is not None:
         return hook(params)
     return {
-        key: ("******" if key in SENSITIVE_PARAM_KEYS else value)
+        key: ("******" if _is_sensitive_param_key(key) else value)
         for key, value in params.items()
     }
 

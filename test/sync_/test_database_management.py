@@ -127,6 +127,42 @@ def test_redact_params_masks_password():
 
 
 @mark_sync_test
+def test_redact_params_matches_sensitive_key_variants():
+    """A range of secret-bearing key names should be masked, including
+    compound and differently-cased variants."""
+    sensitive = {
+        "pwd": "a",
+        "Password": "b",
+        "user_password": "c",
+        "API_KEY": "d",
+        "stripe_api_key": "e",
+        "refresh_token": "f",
+        "client_secret": "g",
+        "authorization": "h",
+        "otp": "i",
+        "ssn": "j",
+    }
+    redacted = _redact_params(sensitive)
+    assert all(value == "******" for value in redacted.values()), redacted
+    for original_value in sensitive.values():
+        assert original_value not in repr(redacted)
+
+
+@mark_sync_test
+def test_redact_params_does_not_over_redact():
+    """Substring matching must not flag innocuous keys that merely contain a
+    sensitive token as a fragment (e.g. 'author' contains 'auth')."""
+    benign = {
+        "author": "alice",
+        "passenger": "bob",
+        "monkey": "george",
+        "user": "neo4j",
+        "name": "thing",
+    }
+    assert _redact_params(benign) == benign
+
+
+@mark_sync_test
 def test_adb_singleton_behavior():
     """Test that Database enforces singleton behavior."""
 
