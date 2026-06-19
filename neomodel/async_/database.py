@@ -8,7 +8,7 @@ import sys
 import time
 from contextvars import ContextVar
 from typing import TYPE_CHECKING, Any, AsyncIterator, Callable, TextIO
-from urllib.parse import quote, unquote, urlparse
+from urllib.parse import urlsplit
 
 from neo4j import (
     DEFAULT_DATABASE,
@@ -358,12 +358,6 @@ class AsyncDatabase:
         Returns:
             None - Sets the driver and database_name as class properties
         """
-        p_start = url.replace(":", "", 1).find(":") + 2
-        p_end = url.rfind("@")
-        password = url[p_start:p_end]
-        url = url.replace(password, quote(password))
-        parsed_url = urlparse(url)
-
         valid_schemas = [
             "bolt",
             "bolt+s",
@@ -374,16 +368,28 @@ class AsyncDatabase:
             "neo4j+ssc",
         ]
 
-        if parsed_url.netloc.find("@") > -1 and parsed_url.scheme in valid_schemas:
-            credentials, hostname = parsed_url.netloc.rsplit("@", 1)
-            username, password = credentials.split(":")
-            password = unquote(password)
-            database_name = parsed_url.path.strip("/")
-        else:
+        # Split the URL by its delimiters rather than substituting the password
+        # substring: this keeps passwords containing characters like "@" or ":"
+        # intact and avoids corrupting the URL when the password happens to match
+        # another part of it. Credentials are split off the last "@" and the
+        # username from the first ":", so only the very first ":" is treated as
+        # the user/password separator.
+        split_url = urlsplit(url)
+        scheme = split_url.scheme
+        if "@" not in split_url.netloc or scheme not in valid_schemas:
             raise ValueError(
                 "Expecting url format: bolt://user:password@localhost:7687 got "
                 f"{self._redact_url_password(url)}"
             )
+
+        credentials, hostname = split_url.netloc.rsplit("@", 1)
+        username, separator, password = credentials.partition(":")
+        if not separator:
+            raise ValueError(
+                "Expecting url format: bolt://user:password@localhost:7687 got "
+                f"{self._redact_url_password(url)}"
+            )
+        database_name = split_url.path.strip("/")
 
         config = get_config()
         options = {
@@ -398,13 +404,13 @@ class AsyncDatabase:
             "user_agent": config.user_agent,
         }
 
-        if "+s" not in parsed_url.scheme:
+        if "+s" not in scheme:
             options["encrypted"] = config.encrypted
             options["trusted_certificates"] = config.trusted_certificates
 
         # Ignore the type error because the workaround would be duplicating code
         self.driver = AsyncGraphDatabase.driver(
-            parsed_url.scheme + "://" + hostname,
+            scheme + "://" + hostname,
             **options,  # type: ignore[arg-type]
         )
         # Keep the credential-bearing URL private (for reconnection) and expose
