@@ -97,6 +97,13 @@ class NeomodelConfig:
             "description": "Maximum transaction retry time in seconds",
         },
     )
+    transaction_timeout: float | None = field(
+        default=None,
+        metadata={
+            "env_var": "NEOMODEL_TRANSACTION_TIMEOUT",
+            "description": "Default transaction timeout in seconds (None = no timeout)",
+        },
+    )
     resolver: Any | None = field(
         default=None,
         metadata={
@@ -201,6 +208,9 @@ class NeomodelConfig:
         if self.max_transaction_retry_time <= 0:
             raise ValueError("max_transaction_retry_time must be positive")
 
+        if self.transaction_timeout is not None and self.transaction_timeout <= 0:
+            raise ValueError("transaction_timeout must be positive")
+
         # Validate slow_queries threshold
         if self.slow_queries < 0:
             raise ValueError("slow_queries must be non-negative")
@@ -227,7 +237,7 @@ class NeomodelConfig:
                     )
                 elif field_type == int:
                     config_data[field_info.name] = int(value)
-                elif field_type == float:
+                elif field_type == float or field_type == (float | None):
                     config_data[field_info.name] = float(value)
                 else:
                     config_data[field_info.name] = value
@@ -435,6 +445,16 @@ class _ConfigModule:
     @MAX_TRANSACTION_RETRY_TIME.setter
     def MAX_TRANSACTION_RETRY_TIME(self, value: float) -> None:
         _set_attr("max_transaction_retry_time", value)
+
+    @property
+    def TRANSACTION_TIMEOUT(
+        self,
+    ) -> float | None:
+        return _get_attr("transaction_timeout")
+
+    @TRANSACTION_TIMEOUT.setter
+    def TRANSACTION_TIMEOUT(self, value: float | None) -> None:
+        _set_attr("transaction_timeout", value)
 
     @property
     def RESOLVER(

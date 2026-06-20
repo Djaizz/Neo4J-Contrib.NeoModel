@@ -93,7 +93,7 @@ class NodeInspector:
     @staticmethod
     def get_constraints_for_label(label):
         constraints, meta_constraints = db.cypher_query(
-            f"SHOW CONSTRAINTS WHERE entityType='NODE' AND '{label}' IN labelsOrTypes AND type='UNIQUENESS'"
+            f"SHOW CONSTRAINTS WHERE entityType='NODE' AND '{label}' IN labelsOrTypes AND type IN ['UNIQUENESS', 'NODE_PROPERTY_UNIQUENESS']"
         )
         constraints_as_dict = [dict(zip(meta_constraints, row)) for row in constraints]
         constrained_properties = [
@@ -144,7 +144,7 @@ class RelationshipInspector:
     @staticmethod
     def get_constraints_for_type(rel_type):
         constraints, meta_constraints = db.cypher_query(
-            f"SHOW CONSTRAINTS WHERE entityType='RELATIONSHIP' AND '{rel_type}' IN labelsOrTypes AND type='RELATIONSHIP_UNIQUENESS'"
+            f"SHOW CONSTRAINTS WHERE entityType='RELATIONSHIP' AND '{rel_type}' IN labelsOrTypes AND type IN ['RELATIONSHIP_UNIQUENESS', 'RELATIONSHIP_PROPERTY_UNIQUENESS']"
         )
         constraints_as_dict = [dict(zip(meta_constraints, row)) for row in constraints]
         constrained_properties = [

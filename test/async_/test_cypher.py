@@ -2,10 +2,12 @@ import builtins
 from test._async_compat import mark_async_test
 
 import pytest
+from neo4j.exceptions import ClientError
 from neo4j.exceptions import ClientError as CypherError
 
 from neomodel import AsyncStructuredNode, StringProperty, adb
 from neomodel._async_compat.util import AsyncUtil
+from neomodel.config import get_config
 
 
 class User2(AsyncStructuredNode):
@@ -167,3 +169,62 @@ async def test_numpy_integration():
     assert isinstance(array, np.ndarray)
     assert array.shape == (2, 2)
     assert array[0][0] == "jimlu"
+
+
+@mark_async_test
+async def test_cypher_query_transaction_timeout_via_config_fires():
+    config = get_config()
+    original = config.transaction_timeout
+    try:
+        config.transaction_timeout = 1
+        with pytest.raises(ClientError, match="TransactionTimedOut"):
+            await adb.cypher_query("CALL apoc.util.sleep(3000)")
+    finally:
+        config.transaction_timeout = original
+
+
+@mark_async_test
+async def test_cypher_query_transaction_timeout_via_config_succeeds():
+    config = get_config()
+    original = config.transaction_timeout
+    try:
+        config.transaction_timeout = 2
+        results, meta = await adb.cypher_query("CALL apoc.util.sleep(500)")
+        assert results is not None
+    finally:
+        config.transaction_timeout = original
+
+
+@mark_async_test
+async def test_cypher_query_transaction_timeout_with_debug_logging(monkeypatch):
+    # Regression test: the configured timeout must not break the
+    # NEOMODEL_CYPHER_DEBUG logging of the executed query
+    monkeypatch.setenv("NEOMODEL_CYPHER_DEBUG", "1")
+    config = get_config()
+    original = config.transaction_timeout
+    try:
+        config.transaction_timeout = 5
+        results, meta = await adb.cypher_query("RETURN 1")
+        assert results[0][0] == 1
+    finally:
+        config.transaction_timeout = original
+
+
+@mark_async_test
+async def test_stream_cypher_query_transaction_timeout_via_config_fires():
+    config = get_config()
+    original = config.transaction_timeout
+    try:
+        config.transaction_timeout = 1
+        with pytest.raises(ClientError, match="TransactionTimedOut"):
+            async with adb.driver.session(database=adb._database_name) as session:
+                async for _ in adb._stream_cypher_query(
+                    session,
+                    "CALL apoc.util.sleep(3000) RETURN 1",
+                    {},
+                    handle_unique=True,
+                    resolve_objects=False,
+                ):
+                    pass
+    finally:
+        config.transaction_timeout = original
