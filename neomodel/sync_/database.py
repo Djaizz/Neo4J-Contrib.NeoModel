@@ -14,6 +14,7 @@ from neo4j import (
     DEFAULT_DATABASE,
     Driver,
     GraphDatabase,
+    Query,
     Result,
     Session,
     Transaction,
@@ -438,9 +439,21 @@ class Database:
         return ImpersonationHandler(self, impersonated_user=user)
 
     @ensure_connection
-    def begin(self, access_mode: str = ACCESS_MODE_WRITE, **parameters: Any) -> None:
+    def begin(
+        self,
+        access_mode: str = ACCESS_MODE_WRITE,
+        timeout: float | None = None,
+        **parameters: Any,
+    ) -> None:
         """
         Begins a new transaction. Raises SystemError if a transaction is already active.
+
+        :param access_mode: The access mode of the transaction, defaults to write.
+        :type access_mode: str
+        :param timeout: Transaction timeout in seconds. Falls back to
+            config.transaction_timeout when None. Pass 0 to disable the timeout
+            for this transaction (the driver will use the server default).
+        :type timeout: float | None
         """
         if (
             hasattr(self, "_active_transaction")
@@ -458,7 +471,8 @@ class Database:
         )
 
         assert self._session is not None, "Session has not been created"
-        self._active_transaction = self._session.begin_transaction()
+        timeout = get_config().transaction_timeout if timeout is None else timeout
+        self._active_transaction = self._session.begin_transaction(timeout=timeout)
 
     @ensure_connection
     def commit(self) -> Bookmarks:
@@ -689,6 +703,18 @@ class Database:
 
         return results, meta
 
+    @staticmethod
+    def _build_run_query(session: Session | Transaction, query: str) -> str | Query:
+        """
+        Wrap the query so the configured transaction timeout applies to auto-commit
+        queries. The driver only accepts a timeout on session.run; queries running in
+        an explicit transaction inherit the timeout given to begin_transaction.
+        """
+        timeout = get_config().transaction_timeout
+        if timeout is not None and isinstance(session, Session):
+            return Query(query, timeout=timeout)
+        return query
+
     def _run_cypher_query(
         self,
         session: Session | Transaction,
@@ -703,7 +729,9 @@ class Database:
             start = time.time()
             if self._parallel_runtime:
                 query = "CYPHER runtime=parallel " + query
-            response: Result = session.run(query=query, parameters=params)
+            response: Result = session.run(
+                query=self._build_run_query(session, query), parameters=params
+            )
             results, meta = [list(r.values()) for r in response], response.keys()
             end = time.time()
 
@@ -775,7 +803,9 @@ class Database:
             if self._parallel_runtime:
                 query = "CYPHER runtime=parallel " + query
 
-            response: Result = session.run(query=query, parameters=params)
+            response: Result = session.run(
+                query=self._build_run_query(session, query), parameters=params
+            )
             keys = response.keys()
 
             # Stream results one record at a time
@@ -912,13 +942,11 @@ class Database:
     def clear_neo4j_database(
         self, clear_constraints: bool = False, clear_indexes: bool = False
     ) -> None:
-        self.cypher_query(
-            """
+        self.cypher_query("""
             MATCH (a)
             CALL { WITH a DETACH DELETE a }
             IN TRANSACTIONS OF 5000 rows
-        """
-        )
+        """)
         if clear_constraints:
             self.drop_constraints()
         if clear_indexes:
@@ -1162,10 +1190,8 @@ class Database:
                 f" + Creating node unique constraint for {property_name} on label {target_cls.__label__} for class {target_cls.__module__}.{target_cls.__name__}\n"
             )
         try:
-            self.cypher_query(
-                f"""CREATE CONSTRAINT {constraint_name}
-                            FOR (n:{label}) REQUIRE n.{property_name} IS UNIQUE"""
-            )
+            self.cypher_query(f"""CREATE CONSTRAINT {constraint_name}
+                            FOR (n:{label}) REQUIRE n.{property_name} IS UNIQUE""")
         except ClientError as e:
             if e.code in (
                 RULE_ALREADY_EXISTS,

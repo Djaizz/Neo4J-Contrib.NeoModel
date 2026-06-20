@@ -17,6 +17,7 @@ from neo4j import (
     AsyncResult,
     AsyncSession,
     AsyncTransaction,
+    Query,
     basic_auth,
 )
 from neo4j.api import Bookmarks
@@ -441,10 +442,20 @@ class AsyncDatabase:
 
     @ensure_connection
     async def begin(
-        self, access_mode: str = ACCESS_MODE_WRITE, **parameters: Any
+        self,
+        access_mode: str = ACCESS_MODE_WRITE,
+        timeout: float | None = None,
+        **parameters: Any,
     ) -> None:
         """
         Begins a new transaction. Raises SystemError if a transaction is already active.
+
+        :param access_mode: The access mode of the transaction, defaults to write.
+        :type access_mode: str
+        :param timeout: Transaction timeout in seconds. Falls back to
+            config.transaction_timeout when None. Pass 0 to disable the timeout
+            for this transaction (the driver will use the server default).
+        :type timeout: float | None
         """
         if (
             hasattr(self, "_active_transaction")
@@ -462,7 +473,10 @@ class AsyncDatabase:
         )
 
         assert self._session is not None, "Session has not been created"
-        self._active_transaction = await self._session.begin_transaction()
+        timeout = get_config().transaction_timeout if timeout is None else timeout
+        self._active_transaction = await self._session.begin_transaction(
+            timeout=timeout
+        )
 
     @ensure_connection
     async def commit(self) -> Bookmarks:
@@ -693,6 +707,20 @@ class AsyncDatabase:
 
         return results, meta
 
+    @staticmethod
+    def _build_run_query(
+        session: AsyncSession | AsyncTransaction, query: str
+    ) -> str | Query:
+        """
+        Wrap the query so the configured transaction timeout applies to auto-commit
+        queries. The driver only accepts a timeout on session.run; queries running in
+        an explicit transaction inherit the timeout given to begin_transaction.
+        """
+        timeout = get_config().transaction_timeout
+        if timeout is not None and isinstance(session, AsyncSession):
+            return Query(query, timeout=timeout)
+        return query
+
     async def _run_cypher_query(
         self,
         session: AsyncSession | AsyncTransaction,
@@ -707,7 +735,9 @@ class AsyncDatabase:
             start = time.time()
             if self._parallel_runtime:
                 query = "CYPHER runtime=parallel " + query
-            response: AsyncResult = await session.run(query=query, parameters=params)
+            response: AsyncResult = await session.run(
+                query=self._build_run_query(session, query), parameters=params
+            )
             results, meta = [list(r.values()) async for r in response], response.keys()
             end = time.time()
 
@@ -779,7 +809,9 @@ class AsyncDatabase:
             if self._parallel_runtime:
                 query = "CYPHER runtime=parallel " + query
 
-            response: AsyncResult = await session.run(query=query, parameters=params)
+            response: AsyncResult = await session.run(
+                query=self._build_run_query(session, query), parameters=params
+            )
             keys = response.keys()
 
             # Stream results one record at a time
