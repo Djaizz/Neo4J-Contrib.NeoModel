@@ -24,4 +24,5 @@ coverage_report/
 .DS_STORE
 cov.xml
 test/data/model_diagram.*
-.claude/settings.local.json
+.claude/*
+CLAUDE.md
