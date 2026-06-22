@@ -130,17 +130,19 @@ def test_redact_params_masks_password():
 def test_redact_params_matches_sensitive_key_variants():
     """A range of secret-bearing key names should be masked, including
     compound and differently-cased variants."""
+    # Use distinctive values that cannot appear as substrings of the (unredacted)
+    # keys, so the leak check below is meaningful.
     sensitive = {
-        "pwd": "a",
-        "Password": "b",
-        "user_password": "c",
-        "API_KEY": "d",
-        "stripe_api_key": "e",
-        "refresh_token": "f",
-        "client_secret": "g",
-        "authorization": "h",
-        "otp": "i",
-        "ssn": "j",
+        "pwd": "secret-value-pwd",
+        "Password": "secret-value-password",
+        "user_password": "secret-value-user-password",
+        "API_KEY": "secret-value-api-key",
+        "stripe_api_key": "secret-value-stripe-api-key",
+        "refresh_token": "secret-value-refresh-token",
+        "client_secret": "secret-value-client-secret",
+        "authorization": "secret-value-authorization",
+        "otp": "secret-value-otp",
+        "ssn": "secret-value-ssn",
     }
     redacted = _redact_params(sensitive)
     assert all(value == "******" for value in redacted.values()), redacted

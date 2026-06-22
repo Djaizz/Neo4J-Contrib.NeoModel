@@ -218,7 +218,14 @@ def test_cypher_debug_log_masks_sensitive_params(caplog):
         config.cypher_debug = True
         with caplog.at_level(logging.DEBUG, logger="neomodel.sync_.database"):
             db.cypher_query("RETURN $password AS p", {"password": "s3cr3t"})
-        logged = "\n".join(record.getMessage() for record in caplog.records)
+        # Only inspect neomodel's own log line: the neo4j driver has separate
+        # protocol-level debug logging that echoes raw parameters and is outside
+        # neomodel's control.
+        logged = "\n".join(
+            record.getMessage()
+            for record in caplog.records
+            if record.name == "neomodel.sync_.database"
+        )
         assert "s3cr3t" not in logged
         assert "******" in logged
     finally:
@@ -239,7 +246,13 @@ def test_cypher_debug_log_uses_custom_redaction_hook(caplog):
         }
         with caplog.at_level(logging.DEBUG, logger="neomodel.sync_.database"):
             db.cypher_query("RETURN $email AS e", {"email": "user@example.com"})
-        logged = "\n".join(record.getMessage() for record in caplog.records)
+        # Only inspect neomodel's own log line (see note above re: the driver's
+        # separate protocol-level logging).
+        logged = "\n".join(
+            record.getMessage()
+            for record in caplog.records
+            if record.name == "neomodel.sync_.database"
+        )
         assert "user@example.com" not in logged
         assert "<hidden>" in logged
     finally:
