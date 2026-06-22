@@ -333,6 +333,23 @@ Log all Cypher queries for debugging::
 
     config.cypher_debug = True  # default False
 
+.. warning::
+    When Cypher debug logging is enabled, query **parameters** are written to
+    the log. Parameters often contain sensitive data (personal information,
+    secrets, password hashes, ...). By default neomodel only masks values whose
+    key is known to be sensitive (e.g. ``password``). Do not enable this in
+    production unless your logs are appropriately secured, and consider
+    configuring a redaction hook (below).
+
+To control exactly what is logged, set a redaction hook. It receives the
+parameters dict and must return a dict that is safe to log::
+
+    def redact(params):
+        # e.g. drop everything except non-sensitive keys
+        return {k: "***" for k in params}
+
+    config.cypher_log_redaction_hook = redact  # default None
+
 Enable Slow Query Logging
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 

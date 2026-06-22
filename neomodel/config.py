@@ -155,6 +155,18 @@ class NeomodelConfig:
             "description": "Threshold in seconds for slow query logging (0 = disabled)",
         },
     )
+    cypher_log_redaction_hook: Optional[Any] = field(
+        default=None,
+        metadata={
+            "env_var": None,
+            "description": (
+                "Optional callable applied to query parameters before they are "
+                "written to the Cypher debug log. Receives the params dict and "
+                "must return a dict safe to log. When unset, only values for "
+                "known-sensitive keys (e.g. 'password') are masked."
+            ),
+        },
+    )
     allow_reload: bool = field(
         default=False,
         metadata={
@@ -250,7 +262,12 @@ class NeomodelConfig:
         for field_info in fields(self):
             value = getattr(self, field_info.name)
             # Skip non-serializable values
-            if field_info.name not in ("driver", "resolver", "trusted_certificates"):
+            if field_info.name not in (
+                "driver",
+                "resolver",
+                "trusted_certificates",
+                "cypher_log_redaction_hook",
+            ):
                 result[field_info.name] = value
         return result
 
@@ -525,6 +542,16 @@ class _ConfigModule:
     @SLOW_QUERIES.setter
     def SLOW_QUERIES(self, value: float) -> None:
         _set_attr("slow_queries", value)
+
+    @property
+    def CYPHER_LOG_REDACTION_HOOK(
+        self,
+    ) -> Optional[Any]:
+        return _get_attr("cypher_log_redaction_hook")
+
+    @CYPHER_LOG_REDACTION_HOOK.setter
+    def CYPHER_LOG_REDACTION_HOOK(self, value: Optional[Any]) -> None:
+        _set_attr("cypher_log_redaction_hook", value)
 
     @property
     def ALLOW_RELOAD(
