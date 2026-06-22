@@ -4,8 +4,6 @@ from test._async_compat import mark_sync_test
 import pytest
 from neo4j.exceptions import ClientError
 from neo4j.exceptions import ClientError as CypherError
-from numpy import ndarray
-from pandas import DataFrame, Series
 
 from neomodel import StringProperty, StructuredNode, db
 from neomodel._async_compat.util import Util
@@ -93,6 +91,7 @@ def test_pandas_not_installed(hide_available_pkg):
 
 @mark_sync_test
 def test_pandas_integration():
+    pd = pytest.importorskip("pandas", reason="Dependency 'pandas' is required")
     from neomodel.integration.pandas import to_dataframe, to_series
 
     jimla = UserPandas(email="jimla@test.com", name="jimla").save()
@@ -105,7 +104,7 @@ def test_pandas_integration():
         )
     )
 
-    assert isinstance(df, DataFrame)
+    assert isinstance(df, pd.DataFrame)
     assert df.shape == (2, 2)
     assert df["name"].tolist() == ["jimla", "jimlo"]
 
@@ -125,7 +124,7 @@ def test_pandas_integration():
         db.cypher_query("MATCH (a:UserPandas) RETURN a.name AS name ORDER BY name")
     )
 
-    assert isinstance(series, Series)
+    assert isinstance(series, pd.Series)
     assert series.shape == (2,)
     assert df["name"].tolist() == ["jimla", "jimlo"]
 
@@ -151,6 +150,7 @@ def test_numpy_not_installed(hide_available_pkg):
 
 @mark_sync_test
 def test_numpy_integration():
+    np = pytest.importorskip("numpy", reason="Dependency 'numpy' is required")
     from neomodel.integration.numpy import to_ndarray
 
     jimly = UserNP(email="jimly@test.com", name="jimly").save()
@@ -162,7 +162,7 @@ def test_numpy_integration():
         )
     )
 
-    assert isinstance(array, ndarray)
+    assert isinstance(array, np.ndarray)
     assert array.shape == (2, 2)
     assert array[0][0] == "jimlu"
 
