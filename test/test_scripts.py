@@ -306,3 +306,35 @@ def test_neomodel_generate_diagram():
         check=False,
     )
     assert "Unsupported file type : pdf" in wrong_result.stderr
+
+
+@pytest.mark.parametrize(
+    "bad_path",
+    [
+        "../escape.py",
+        "../../etc/passwd",
+        "/etc/passwd",
+        "a/../../b.py",
+    ],
+)
+def test_inspect_database_write_to_rejects_path_escape(tmp_path, bad_path):
+    from neomodel.scripts.neomodel_inspect_database import _resolve_output_path
+
+    with pytest.raises(ValueError, match="outside the allowed directory"):
+        _resolve_output_path(bad_path, base_dir=tmp_path)
+
+
+def test_inspect_database_write_to_allows_paths_within_base(tmp_path):
+    from neomodel.scripts.neomodel_inspect_database import _resolve_output_path
+
+    resolved = _resolve_output_path("sub/dir/models.py", base_dir=tmp_path)
+    assert resolved.is_relative_to(tmp_path.resolve())
+    assert resolved.name == "models.py"
+
+
+def test_inspect_database_write_to_rejects_existing_directory(tmp_path):
+    from neomodel.scripts.neomodel_inspect_database import _resolve_output_path
+
+    (tmp_path / "adir").mkdir()
+    with pytest.raises(ValueError, match="existing directory"):
+        _resolve_output_path("adir", base_dir=tmp_path)
