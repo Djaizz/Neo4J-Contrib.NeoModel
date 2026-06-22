@@ -1,5 +1,6 @@
-Version 6.2.0 unreleased
+Version 6.2.0 2026-06
 * Add transaction timeout support, per transaction via db.transaction(timeout=...) / db.begin(timeout=...), or as a global default via config.transaction_timeout / NEOMODEL_TRANSACTION_TIMEOUT. Thanks to @DenesPal
+* Fix Unicode case-insensitive filters. Thanks to @profatsky
 * Security fixes
 
 Version 6.1.0 2026-03
