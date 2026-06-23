@@ -17,4 +17,4 @@ repos:
         entry: bin/make-unasync
         language: python
         files: "^(neomodel/async_|test/async_)/.*"
-        additional_dependencies: [unasync, isort, black]
+        additional_dependencies: [unasync, isort==5.11.5, black==23.3.0]
