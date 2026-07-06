@@ -36,6 +36,7 @@ Advanced driver configuration, for example::
     config.max_connection_pool_size = 50
     config.encrypted = True
     config.keep_alive = True
+    config.transaction_timeout = 30.0  # default timeout in seconds for all transactions
 
 Self-managed Connection
 ~~~~~~~~~~~~~~~~~~~~~~~
@@ -110,6 +111,7 @@ Configuration is automatically loaded from environment variables using the ``NEO
 * ``NEOMODEL_MAX_CONNECTION_LIFETIME`` - Maximum connection lifetime
 * ``NEOMODEL_MAX_CONNECTION_POOL_SIZE`` - Maximum connection pool size
 * ``NEOMODEL_MAX_TRANSACTION_RETRY_TIME`` - Maximum transaction retry time
+* ``NEOMODEL_TRANSACTION_TIMEOUT`` - Default transaction timeout in seconds (unset = server decides)
 * ``NEOMODEL_USER_AGENT`` - User agent string
 * ``NEOMODEL_FORCE_TIMEZONE`` - Force timezone-aware datetime objects
 * ``NEOMODEL_SOFT_CARDINALITY_CHECK`` - Enable soft cardinality checking
@@ -330,6 +332,23 @@ Enable Cypher Debug Logging
 Log all Cypher queries for debugging::
 
     config.cypher_debug = True  # default False
+
+.. warning::
+    When Cypher debug logging is enabled, query **parameters** are written to
+    the log. Parameters often contain sensitive data (personal information,
+    secrets, password hashes, ...). By default neomodel only masks values whose
+    key is known to be sensitive (e.g. ``password``). Do not enable this in
+    production unless your logs are appropriately secured, and consider
+    configuring a redaction hook (below).
+
+To control exactly what is logged, set a redaction hook. It receives the
+parameters dict and must return a dict that is safe to log::
+
+    def redact(params):
+        # e.g. drop everything except non-sensitive keys
+        return {k: "***" for k in params}
+
+    config.cypher_log_redaction_hook = redact  # default None
 
 Enable Slow Query Logging
 ~~~~~~~~~~~~~~~~~~~~~~~~~
