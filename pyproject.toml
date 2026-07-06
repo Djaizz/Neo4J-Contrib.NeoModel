@@ -23,7 +23,7 @@ classifiers = [
     "Topic :: Database",
 ]
 dependencies = [
-    "Neo4J >= 5.28",  # relax Neo4J version constraint to allow rapid development & integration with other projects
+    "Neo4J >= 6.2",
     "typing-extensions",
 ]
 requires-python = ">=3.10"
