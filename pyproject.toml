@@ -23,7 +23,7 @@ classifiers = [
     "Topic :: Database",
 ]
 dependencies = [
-    "Neo4J >= 6.2",
+    "Neo4J >= 6.3",
     "typing-extensions",
 ]
 requires-python = ">=3.10"
